@@ -803,10 +803,10 @@ class WinGetGUI(QMainWindow):
                 try:
                     # 使用winget更新命令
                     result = subprocess.run(
-                        ["winget", "upgrade", "--id", package_id, "--source", "winget", "-h"], 
+                        ["winget", "upgrade", "--id", package_id], 
                         capture_output=True, 
                         text=True, 
-                        timeout=300  # 5分钟超时
+                        timeout=3000  # 5分钟超时
                     )
                     
                     package_name = "Unknown"
