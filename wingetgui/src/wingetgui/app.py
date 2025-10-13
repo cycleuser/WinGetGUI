@@ -259,7 +259,7 @@ class WinGetGUI(QMainWindow):
         
         # 创建表格模型
         self.installed_model = QStandardItemModel(0, 4)  # 4列：Name, Id, Version, Available
-        self.installed_model.setHorizontalHeaderLabels(["软件名", "ID", "已安装版本", "当前最新版本"])
+        self.installed_model.setHorizontalHeaderLabels(["软件名", "软件ID", "已安装版本", "当前最新版本"])
         self.installed_table.setModel(self.installed_model)
         
         # 连接选择信号
@@ -577,7 +577,7 @@ class WinGetGUI(QMainWindow):
         
         def get_installed():
             try:
-                # 直接使用普通格式获取列表（不使用--json参数）
+                # 获取winget列表输出
                 cmd = ["winget", "list", "--source", "winget"]
                 print(f"Executing command: {' '.join(cmd)}")
                 
@@ -599,22 +599,62 @@ class WinGetGUI(QMainWindow):
                     output = result.stdout.strip() if result.stdout else ""
                     if output:
                         lines = output.split('\n')
-                        if len(lines) > 2:  # 确保有内容（跳过标题行）
+                        
+                        # 查找实际的标题行（包含Name的行）
+                        header_line_index = -1
+                        header_line = ""
+                        for i, line in enumerate(lines):
+                            if "Name" in line and "Id" in line and "Version" in line:
+                                header_line_index = i
+                                header_line = line
+                                break
+                        
+                        if header_line_index >= 0:
                             packages = []
-                            # 跳过前两行（标题和分隔线）
-                            for line in lines[2:]:
-                                line = line.strip() if line else ""
-                                if line:  # 跳过空行
-                                    # 分割行数据，考虑到可能有空值
-                                    # 格式: Name Id Version Available
-                                    parts = line.split()
-                                    if len(parts) >= 3:
-                                        # 处理可能缺少Available版本的情况
-                                        name = parts[0] if len(parts) > 0 else "Unknown"
-                                        package_id = parts[1] if len(parts) > 1 else "Unknown"
-                                        version = parts[2] if len(parts) > 2 else "Unknown"
-                                        available = parts[3] if len(parts) > 3 else ""
-                                        
+                            
+                            # 查找各列的位置
+                            name_pos = header_line.find("Name")
+                            id_pos = header_line.find("Id")
+                            version_pos = header_line.find("Version")
+                            available_pos = header_line.find("Available")
+                            
+                            # 从标题行之后开始解析数据行
+                            for i in range(header_line_index + 2, len(lines)):
+                                line = lines[i].rstrip()
+                                if line and not line.startswith('-') and "Name" not in line:
+                                    # 使用列位置解析数据
+                                    name = ""
+                                    package_id = ""
+                                    version = ""
+                                    available = ""
+                                    
+                                    # Name列
+                                    if name_pos >= 0 and len(line) > name_pos:
+                                        end_pos = id_pos if id_pos > name_pos and id_pos < len(line) else len(line)
+                                        if end_pos > name_pos:
+                                            name = line[name_pos:end_pos].strip()
+                                    
+                                    # Id列
+                                    if id_pos >= 0 and len(line) > id_pos:
+                                        start_pos = id_pos
+                                        end_pos = version_pos if version_pos > id_pos and version_pos < len(line) else len(line)
+                                        if end_pos > start_pos:
+                                            package_id = line[start_pos:end_pos].strip()
+                                    
+                                    # Version列
+                                    if version_pos >= 0 and len(line) > version_pos:
+                                        start_pos = version_pos
+                                        end_pos = available_pos if available_pos > version_pos and available_pos < len(line) else len(line)
+                                        if end_pos > start_pos:
+                                            version = line[start_pos:end_pos].strip()
+                                    
+                                    # Available列
+                                    if available_pos >= 0 and len(line) > available_pos:
+                                        start_pos = available_pos
+                                        available = line[start_pos:].strip()
+                                    
+                                    # 只有当至少有名称时才添加包
+                                    if name and name.strip():
                                         package = {
                                             "Name": name,
                                             "Id": package_id,
@@ -622,15 +662,7 @@ class WinGetGUI(QMainWindow):
                                             "Available": available
                                         }
                                         packages.append(package)
-                                    elif len(parts) == 2:
-                                        # 只有名称和ID
-                                        package = {
-                                            "Name": parts[0],
-                                            "Id": parts[1],
-                                            "Version": "Unknown",
-                                            "Available": ""
-                                        }
-                                        packages.append(package)
+                            
                             return packages
                     return []
                 else:
@@ -640,7 +672,7 @@ class WinGetGUI(QMainWindow):
                     elif result.returncode == -1073741515:
                         error_msg += "\n可能是WinGet未正确安装。"
                     return error_msg
-                        
+                    
             except subprocess.TimeoutExpired:
                 return "获取超时"
             except Exception as e:
